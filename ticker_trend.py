@@ -13,7 +13,7 @@ MODEL_PATH = './models'
 MODEL_NAME = 'ticker_trend'
 
 
-def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data_dim=6):
+def train(data, labels, epochs, predict_steps, batch_size, data_dim=6):
     model = keras.models.Sequential()
     model.add(
         keras.layers.recurrent.LSTM(
@@ -51,7 +51,10 @@ def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data
     )
     load_model_path = find_latest_model(MODEL_PATH, MODEL_NAME)
     if load_model_path:
+        logger.info('load latest model: {p}'.format(p=load_model_path))
         model.load_weights(load_model_path)
+    else:
+        logger.info('train model from scratch')
     model.fit(
         data, labels, epochs=epochs,
         batch_size=batch_size, shuffle=True, validation_split=0.2
@@ -62,7 +65,9 @@ def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data
 def main(epochs, predict_steps, label_steps, size, batch_size=1):
     dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
-        size=size, predict_steps=predict_steps, label_steps=label_steps)
+        market_types=[2], size=size, predict_steps=predict_steps,
+        label_steps=label_steps, test_split_rate=0.1
+    )
     model = train(
         data=train_data,
         labels=train_labels,

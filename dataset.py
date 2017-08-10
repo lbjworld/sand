@@ -2,7 +2,6 @@
 import logging
 import json
 import random
-import math
 from datetime import datetime
 from collections import OrderedDict, Counter
 import numpy as np
@@ -22,24 +21,18 @@ class MarketTickerDataSet(object):
     LAST_IDX = 5
 
     @staticmethod
-    def load_data_from_file(file_name, market_type, test_split_rate=0.1):
+    def load_data_from_file(file_name, market_type):
         with open(file_name, 'r') as f:
             data = f.read()
             records = json.loads(data)
-            train_data, test_data = [], []
-            total_count = len(records)
-            test_count = int(total_count * test_split_rate)
-            for idx, r in enumerate(records):
+            res_data = []
+            for r in records:
                 format_r = MarketTickerDataSet.process_single_record(r)
                 if (not format_r) or format_r['type'] != market_type:
                     continue
-                if idx < total_count - test_count:
-                    train_data.append(format_r.values())
-                else:
-                    test_data.append(format_r.values())
-            logger.info('load data: train({tr}) test({te})'.format(
-                tr=len(train_data), te=len(test_data)))
-            return train_data, test_data
+                res_data.append(format_r.values())
+            logger.info('load data({tr})'.format(tr=len(res_data)))
+            return res_data
 
     @staticmethod
     def process_single_record(record):
@@ -130,25 +123,44 @@ class MarketTickerDataSet(object):
         # 所有的点都已经采样过了
         logger.info('no samples')
 
-    def preprocess_data(self, data, size):
-        sampled_data = []
-        output_labels = []
+    def preprocess_data(self, data, size, split_rate):
+        train_size = int(size * (1 - split_rate))
+        test_size = size - train_size
+        train_sampled_data = []
+        train_output_labels = []
         count = 0
-        label_stats = Counter()
-        while count < size:
+        train_label_stats = Counter()
+        while count < train_size:
             d, l = next(self.sample_data_label(data))
-            sampled_data.append(d)
-            output_labels.append([l])
-            label_stats[l] += 1
+            train_sampled_data.append(d)
+            train_output_labels.append([l])
+            train_label_stats[l] += 1
             count += 1
-        logger.info('data label: {ls}'.format(ls=label_stats))
-        one_hot_labels = keras.utils.to_categorical(np.array(output_labels), num_classes=3)
-        normalized_data = keras.utils.normalize(np.array(sampled_data), axis=2, order=2)
+        logger.info('train data label: {ls}'.format(ls=train_label_stats))
+        train_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=3)
+        train_normalized_data = keras.utils.normalize(
+            np.array(train_sampled_data), axis=2, order=2
+        )
         # normalized_data = np.array(sampled_data)
-        return normalized_data, one_hot_labels
+        test_sampled_data = []
+        test_output_labels = []
+        count = 0
+        test_label_stats = Counter()
+        while count < test_size:
+            d, l = next(self.sample_data_label(data))
+            test_sampled_data.append(d)
+            test_output_labels.append([l])
+            test_label_stats[l] += 1
+            count += 1
+        logger.info('test data label: {ls}'.format(ls=test_label_stats))
+        test_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=3)
+        test_normalized_data = keras.utils.normalize(
+            np.array(train_sampled_data), axis=2, order=2
+        )
+        return train_normalized_data, train_labels, test_normalized_data, test_labels
 
     def load_data(
-            self, market_types=[1,2,3], size=10000, profit_rate=0.005, predict_steps=20,
+            self, market_types=[1, 2, 3], size=10000, profit_rate=0.005, predict_steps=20,
             label_steps=10, sample_interval=5, test_split_rate=0.1, seed=None):
         # init all parameters
         self.market_types = market_types
@@ -163,13 +175,11 @@ class MarketTickerDataSet(object):
         all_train_labels = None
         all_test_labels = None
         for mtype in market_types:
-            train, test = self.load_data_from_file(
+            origin_data = self.load_data_from_file(
                 file_name='/code/data/btc_ticker.json',
-                market_type=mtype, test_split_rate=test_split_rate)
-            sampled_train_data, train_labels = self.preprocess_data(
-                train, size=int(size*(1-test_split_rate)))
-            sampled_test_data, test_labels = self.preprocess_data(
-                test, size=int(size*test_split_rate))
+                market_type=mtype)
+            sampled_train_data, train_labels, sampled_test_data, test_labels = self.preprocess_data(
+                origin_data, size=size, split_rate=test_split_rate)
             all_train_data = sampled_train_data if all_train_data is None else np.concatenate(
                 (all_train_data, sampled_train_data), axis=0)
             all_train_labels = train_labels if all_train_labels is None else np.concatenate(
