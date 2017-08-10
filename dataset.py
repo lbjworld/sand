@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-class MarketDataSet(object):
+class MarketTickerDataSet(object):
 
     SELL_IDX = 0
     BUY_IDX = 1
@@ -30,7 +30,7 @@ class MarketDataSet(object):
             total_count = len(records)
             test_count = int(total_count * test_split_rate)
             for idx, r in enumerate(records):
-                format_r = MarketDataSet.process_single_record(r)
+                format_r = MarketTickerDataSet.process_single_record(r)
                 if (not format_r) or format_r['type'] != market_type:
                     continue
                 if idx < total_count - test_count:

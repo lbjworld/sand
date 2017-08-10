@@ -3,10 +3,14 @@ import logging
 import keras
 import time
 
-from dataset import MarketDataSet
+from utils import find_latest_model
+from dataset import MarketTickerDataSet
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+MODEL_PATH = './models'
+MODEL_NAME = 'ticker_trend'
 
 
 def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data_dim=6):
@@ -45,6 +49,7 @@ def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data
         loss='categorical_crossentropy',
         metrics=['accuracy']
     )
+    load_model_path = find_latest_model(MODEL_PATH, MODEL_NAME)
     if load_model_path:
         model.load_weights(load_model_path)
     model.fit(
@@ -54,8 +59,8 @@ def train(data, labels, epochs, predict_steps, batch_size, load_model_path, data
     return model
 
 
-def main(epochs, predict_steps, label_steps, size, batch_size=1, load_model=False):
-    dataset = MarketDataSet()
+def main(epochs, predict_steps, label_steps, size, batch_size=1):
+    dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
         size=size, predict_steps=predict_steps, label_steps=label_steps)
     model = train(
@@ -63,11 +68,12 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1, load_model=Fals
         labels=train_labels,
         epochs=epochs,
         predict_steps=predict_steps,
-        batch_size=batch_size,
-        load_model_path='./models/model.latest.h5' if load_model else None
+        batch_size=batch_size
     )
     score = model.evaluate(test_data, test_labels, batch_size=batch_size)
     logger.info('final score:{s}'.format(s=score))
-    model.save_weights('./models/model.{ts}.h5'.format(ts=int(time.time())))
+    model.save_weights('{mp}/{mn}.{ts}.h5'.format(
+        mp=MODEL_PATH, mn=MODEL_NAME, ts=int(time.time()))
+    )
 
-main(epochs=100, size=4000, predict_steps=20, label_steps=10, batch_size=20, load_model=True)
+main(epochs=100, size=4000, predict_steps=20, label_steps=10, batch_size=20)
