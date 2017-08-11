@@ -65,7 +65,7 @@ def train(data, labels, epochs, predict_steps, batch_size, data_dim=6):
 def main(epochs, predict_steps, label_steps, size, batch_size=1):
     dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
-        market_types=[2], size=size, predict_steps=predict_steps,
+        market_types=[1, 2, 3], size=size, predict_steps=predict_steps,
         label_steps=label_steps, test_split_rate=0.1
     )
     model = train(
@@ -81,4 +81,4 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1):
         mp=MODEL_PATH, mn=MODEL_NAME, ts=int(time.time()))
     )
 
-main(epochs=100, size=4000, predict_steps=20, label_steps=10, batch_size=20)
+main(epochs=100, size=6000, predict_steps=20, label_steps=10, batch_size=20)
