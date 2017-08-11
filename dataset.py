@@ -1,4 +1,5 @@
 # coding: utf-8
+import os
 import logging
 import json
 import random
@@ -57,10 +58,7 @@ class MarketTickerDataSet(object):
         label_steps = self.label_steps
         seed = self.seed
         idx_set = set()
-        """
-            默认参数的含义：
-            每间隔7个step采样一次，采样6次作为一条记录，通过后续的4次采样生成label
-        """
+
         def _mean(idx, records):
             return sum([r[idx] for r in records])/len(records)
 
@@ -160,8 +158,18 @@ class MarketTickerDataSet(object):
         return train_normalized_data, train_labels, test_normalized_data, test_labels
 
     def load_data(
-            self, market_types=[1, 2, 3], size=10000, profit_rate=0.005, predict_steps=20,
+            self, model_name, market_types=[1, 2, 3], size=10000, profit_rate=0.005, predict_steps=20,
             label_steps=10, sample_interval=5, test_split_rate=0.1, seed=None):
+        """
+            默认参数的含义：
+            每间隔5个step采样一次，采样20次作为一条记录，通过后续的10次采样生成label
+        """
+        # 查看是否有临时数据文件存在
+        tmp_data_path = '/code/data/tmp/{mn}.{size}.data'.format(mn=model_name, size=size)
+        if os.path.exists(tmp_data_path + '.npz'):
+            tmp_data = np.load(tmp_data_path)
+            return tmp_data['train_data'], tmp_data['train_labels'], tmp_data['test_data'], tmp_data['test_labels']
+        # 重新生成数据文件
         # init all parameters
         self.market_types = market_types
         self.profit_rate = profit_rate
@@ -188,4 +196,8 @@ class MarketTickerDataSet(object):
                 (all_test_data, sampled_test_data), axis=0)
             all_test_labels = test_labels if all_test_labels is None else np.concatenate(
                 (all_test_labels, test_labels), axis=0)
+        np.savez(
+            tmp_data_path, train_data=all_train_data, train_labels=all_train_labels,
+            test_data=all_test_data, test_labels=all_test_labels
+        )
         return all_train_data, all_train_labels, all_test_data, all_test_labels
