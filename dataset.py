@@ -22,6 +22,18 @@ class MarketTickerDataSet(object):
     LAST_IDX = 5
 
     @staticmethod
+    def price_mean(idx, records):
+        return sum([r[idx] for r in records])/len(records)
+
+    @staticmethod
+    def price_min(idx, records):
+        return min([r[idx] for r in records])
+
+    @staticmethod
+    def price_max(idx, records):
+        return max([r[idx] for r in records])
+
+    @staticmethod
     def load_data_from_file(file_name, market_type):
         with open(file_name, 'r') as f:
             data = f.read()
@@ -52,45 +64,11 @@ class MarketTickerDataSet(object):
         return res
 
     def sample_data_label(self, data):
-        prec = self.profit_rate
         sample_interval = self.sample_interval
         predict_steps = self.predict_steps
         label_steps = self.label_steps
         seed = self.seed
         idx_set = set()
-
-        def _mean(idx, records):
-            return sum([r[idx] for r in records])/len(records)
-
-        def _min(idx, records):
-            return min([r[idx] for r in records])
-
-        def _max(idx, records):
-            return max([r[idx] for r in records])
-
-        def mean_last(records):
-            return _mean(self.LAST_IDX, records)
-
-        def max_last(records):
-            return _max(self.LAST_IDX, records)
-
-        def min_last(records):
-            return _min(self.LAST_IDX, records)
-
-        def gen_label(records):
-            label_max = max_last(records[-label_steps:])
-            label_min = min_last(records[-label_steps:])
-            train_m = mean_last(records[:predict_steps])
-            label = 0
-            if (label_max - train_m) / train_m > prec:
-                label = 1
-            elif (label_min - train_m) / train_m < -prec:
-                label = 2
-            # logger.debug('samples: {s}'.format(s=records))
-            # logger.debug('label({l}) => {lmax} {lmin} {t}'.format(
-            #     l=label, lmax=label_max, lmin=label_min, t=train_m))
-            # raw_input()
-            return label
 
         def check_time_series(records):
             """检测采样时序是否正确"""
@@ -101,6 +79,7 @@ class MarketTickerDataSet(object):
                         return False
             return True
 
+        gen_label = self.gen_label_cb
         random.seed(seed)
         total_count = len(data)
         padding = (predict_steps + label_steps) * sample_interval
@@ -114,7 +93,7 @@ class MarketTickerDataSet(object):
             if not check_time_series([data[i] for i in sample_idx]):
                 continue
             samples = [data[i][2:] for i in sample_idx]
-            label = gen_label(samples)
+            label = gen_label(self, samples)
             train_sample = samples[:predict_steps]
             # logger.debug('generate sample: {s} {l}'.format(s=train_sample, l=label))
             yield train_sample, label
@@ -122,6 +101,7 @@ class MarketTickerDataSet(object):
         logger.info('no samples')
 
     def preprocess_data(self, data, size, split_rate):
+        num_labels = self.num_labels
         train_size = int(size * (1 - split_rate))
         test_size = size - train_size
         train_sampled_data = []
@@ -135,7 +115,7 @@ class MarketTickerDataSet(object):
             train_label_stats[l] += 1
             count += 1
         logger.info('train data label: {ls}'.format(ls=train_label_stats))
-        train_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=3)
+        train_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=num_labels)
         train_normalized_data = keras.utils.normalize(
             np.array(train_sampled_data), axis=2, order=2
         )
@@ -151,22 +131,22 @@ class MarketTickerDataSet(object):
             test_label_stats[l] += 1
             count += 1
         logger.info('test data label: {ls}'.format(ls=test_label_stats))
-        test_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=3)
+        test_labels = keras.utils.to_categorical(np.array(train_output_labels), num_classes=num_labels)
         test_normalized_data = keras.utils.normalize(
             np.array(train_sampled_data), axis=2, order=2
         )
         return train_normalized_data, train_labels, test_normalized_data, test_labels
 
     def load_data(
-            self, model_name, market_types=[1, 2, 3], size=10000, profit_rate=0.005, predict_steps=20,
-            label_steps=10, sample_interval=5, test_split_rate=0.1, seed=None):
+            self, model_name, gen_label_cb, market_types=[1, 2, 3], size=10000, profit_rate=0.005,
+            predict_steps=20, label_steps=10, sample_interval=5, test_split_rate=0.1, num_labels=3, seed=None):
         """
             默认参数的含义：
             每间隔5个step采样一次，采样20次作为一条记录，通过后续的10次采样生成label
         """
         # 查看是否有临时数据文件存在
-        tmp_data_path = '/code/data/tmp/{mn}.{size}.data'.format(mn=model_name, size=size)
-        if os.path.exists(tmp_data_path + '.npz'):
+        tmp_data_path = '/code/data/tmp/{mn}.{size}.data.npz'.format(mn=model_name, size=size)
+        if os.path.exists(tmp_data_path):
             tmp_data = np.load(tmp_data_path)
             return tmp_data['train_data'], tmp_data['train_labels'], tmp_data['test_data'], tmp_data['test_labels']
         # 重新生成数据文件
@@ -176,6 +156,8 @@ class MarketTickerDataSet(object):
         self.predict_steps = predict_steps
         self.label_steps = label_steps
         self.sample_interval = sample_interval
+        self.gen_label_cb = gen_label_cb
+        self.num_labels = num_labels
         self.seed = seed
         self.size = size
         all_train_data = None

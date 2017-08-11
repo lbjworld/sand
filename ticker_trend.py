@@ -13,7 +13,7 @@ MODEL_PATH = './models'
 MODEL_NAME = 'ticker_trend'
 
 
-def train(data, labels, epochs, predict_steps, batch_size, data_dim=6):
+def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=6):
     model = keras.models.Sequential()
     model.add(
         keras.layers.recurrent.LSTM(
@@ -41,7 +41,7 @@ def train(data, labels, epochs, predict_steps, batch_size, data_dim=6):
     # model.add(keras.layers.Dropout(0.5))
     # model.add(keras.layers.core.Dense(32, activation='relu'))
     # model.add(keras.layers.Dropout(0.5))
-    model.add(keras.layers.core.Dense(3, activation='softmax'))
+    model.add(keras.layers.core.Dense(num_labels, activation='softmax'))
     # sgd = keras.optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
     adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
     model.compile(
@@ -62,18 +62,32 @@ def train(data, labels, epochs, predict_steps, batch_size, data_dim=6):
     return model
 
 
+def gen_label(dataset, records):
+    prec = 0.005
+    label_max = dataset.price_max(dataset.LAST_IDX, records[-dataset.label_steps:])
+    label_min = dataset.price_min(dataset.LAST_IDX, records[-dataset.label_steps:])
+    train_m = dataset.price_mean(dataset.LAST_IDX, records[:dataset.predict_steps])
+    label = 0
+    if (label_max - train_m) / train_m > prec:
+        label = 1
+    elif (label_min - train_m) / train_m < -prec:
+        label = 2
+    return label
+
+
 def main(epochs, predict_steps, label_steps, size, batch_size=1):
     dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
-        market_types=[1, 2, 3], size=size, predict_steps=predict_steps,
-        label_steps=label_steps, test_split_rate=0.1
+        model_name=MODEL_NAME, gen_label_cb=gen_label, market_types=[1, 2, 3], size=size,
+        predict_steps=predict_steps, label_steps=label_steps, test_split_rate=0.1, num_labels=3,
     )
     model = train(
         data=train_data,
         labels=train_labels,
         epochs=epochs,
         predict_steps=predict_steps,
-        batch_size=batch_size
+        batch_size=batch_size,
+        num_labels=3,
     )
     score = model.evaluate(test_data, test_labels, batch_size=batch_size)
     logger.info('final score:{s}'.format(s=score))
