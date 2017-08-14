@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 MODEL_PATH = './models'
-MODEL_NAME = 'p2_profit_detector'
+MODEL_NAME = 'price_box'
 
 
 def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=6):
