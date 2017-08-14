@@ -2,6 +2,7 @@
 import logging
 import keras
 import time
+import numpy as np
 
 from utils import find_latest_model
 from dataset import MarketTickerDataSet
@@ -63,21 +64,35 @@ def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=
 
 
 def gen_label(dataset, records):
-    up_prec = 0.02
-    label_buy_max = dataset.price_max(dataset.SELL_IDX, records[-dataset.label_steps:])
-    last_price = records[:dataset.predict_steps][-1][dataset.LAST_IDX]
-    label = 0
-    if (label_buy_max - last_price) / last_price > up_prec:
-        # 涨幅超过2%
-        label = 1
+    up_prec = 0.01
+    predict_array = np.array([r[dataset.LAST_IDX] for r in records[:dataset.predict_steps]])
+    price_mean = np.mean(predict_array)
+    price_std = np.std(predict_array)
+    up_bound = price_mean + price_std
+    low_bound = price_mean - price_std
+
+    label_last_prices = [r[dataset.LAST_IDX] for r in records[-dataset.label_steps:]]
+    label_price_max = max(label_last_prices)
+    label_price_min = min(label_last_prices)
+    label = 0  # 价格平稳阶段
+    if label_price_max < up_bound and label_price_min > low_bound:  # 波动收窄
+        label = 3
+    elif label_price_max > up_bound and label_price_min < low_bound:  # 波动扩大
+        label = 4
+    else:
+        if (label_price_max - up_bound) / price_mean > up_prec:  # 价格突破顶部
+            label = 1
+        if (label_price_min - low_bound) / price_mean < -up_prec:  # 价格突破底部
+            label = 2
     return label
 
 
-def main(epochs, predict_steps, label_steps, size, batch_size=1):
+def main(epochs, predict_steps, label_steps, size, batch_size=1, num_labels=5):
     dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
         model_name=MODEL_NAME, gen_label_cb=gen_label, market_types=[1, 2, 3], size=size,
-        predict_steps=predict_steps, label_steps=label_steps, test_split_rate=0.1, num_labels=2
+        predict_steps=predict_steps, label_steps=label_steps, test_split_rate=0.1,
+        num_labels=num_labels
     )
     model = train(
         data=train_data,
@@ -85,7 +100,7 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1):
         epochs=epochs,
         predict_steps=predict_steps,
         batch_size=batch_size,
-        num_labels=2,
+        num_labels=num_labels,
     )
     score = model.evaluate(test_data, test_labels, batch_size=batch_size)
     logger.info('final score:{s}'.format(s=score))
@@ -93,4 +108,4 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1):
         mp=MODEL_PATH, mn=MODEL_NAME, ts=int(time.time()))
     )
 
-main(epochs=100, size=6000, predict_steps=20, label_steps=10, batch_size=20)
+main(epochs=100, size=6000, predict_steps=30, label_steps=20, batch_size=20)
