@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 MODEL_PATH = './models'
-MODEL_NAME = 'price_box'
+MODEL_NAME = 'weighted_price_box'
 
 
 def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=6):
