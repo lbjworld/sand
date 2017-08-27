@@ -27,7 +27,12 @@ class EpochCheckPoint(keras.callbacks.Callback):
             )
 
 
-def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=6):
+def get_class_weights(train_data, label_data):
+    from sklearn.utils import compute_class_weight
+    return compute_class_weight(class_weight='balanced', classes=train_data, y=label_data)
+
+
+def train(data, labels, epochs, predict_steps, batch_size, num_labels, class_weight=None, data_dim=6):
     model = keras.models.Sequential()
     model.add(
         keras.layers.recurrent.LSTM(
@@ -69,13 +74,8 @@ def train(data, labels, epochs, predict_steps, batch_size, num_labels, data_dim=
         model.load_weights(load_model_path)
     else:
         logger.info('train model from scratch')
-    # set class weights
-    class_weight = {
-        0: 1.,
-        1: 5.,
-        2: 5.,
-    }
-    assert(len(class_weight.keys()) == num_labels)
+    if class_weight:
+        assert(len(class_weight.keys()) == num_labels)
     checkpointer = EpochCheckPoint(
         path=MODEL_PATH, model_name=MODEL_NAME, checkpoint_per_epochs=100)
     model.fit(
@@ -99,9 +99,9 @@ def gen_label(dataset, records):
     label_price_min = min(label_last_prices)
     label = 0  # 价格平稳阶段
     if label_price_max < up_bound and label_price_min > low_bound:  # 波动收窄
-        return label
+        pass
     elif label_price_max > up_bound and label_price_min < low_bound:  # 波动扩大
-        return label
+        pass
     else:
         if (label_price_max - up_bound) / price_mean > up_prec:  # 价格突破顶部
             label = 1
@@ -113,10 +113,14 @@ def gen_label(dataset, records):
 def main(epochs, predict_steps, label_steps, size, batch_size=1, num_labels=3):
     dataset = MarketTickerDataSet()
     train_data, train_labels, test_data, test_labels = dataset.load_data(
-        model_name=MODEL_NAME, gen_label_cb=gen_label, market_types=[1, 2, 3], size=size,
+        model_name=MODEL_NAME, gen_label_cb=gen_label, market_types=[1, 3], size=size,
         predict_steps=predict_steps, label_steps=label_steps, test_split_rate=0.1,
         num_labels=num_labels
     )
+    labels = [i for one_hot in train_labels for i,e in enumerate(one_hot) if e == 1]
+    class_weight = get_class_weights(np.unique(labels), labels)
+    class_weight = dict([(i, w) for i, w in enumerate(class_weight)])
+    logger.info('train class weight: {cw}'.format(cw=class_weight))
     model = train(
         data=train_data,
         labels=train_labels,
@@ -124,6 +128,7 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1, num_labels=3):
         predict_steps=predict_steps,
         batch_size=batch_size,
         num_labels=num_labels,
+        class_weight=class_weight,
     )
     score = model.evaluate(test_data, test_labels, batch_size=batch_size)
     logger.info('final score:{s}'.format(s=score))
@@ -131,4 +136,4 @@ def main(epochs, predict_steps, label_steps, size, batch_size=1, num_labels=3):
         mp=MODEL_PATH, mn=MODEL_NAME, ts=int(time.time()))
     )
 
-main(epochs=500, size=6000, predict_steps=30, label_steps=20, batch_size=20)
+main(epochs=1000, size=6000, predict_steps=30, label_steps=20, batch_size=20)
